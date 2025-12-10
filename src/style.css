@@ -1,0 +1,11 @@
+/*全体のリセット設定*/
+*{
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body{
+  background-color: #f0f0f0;/*背景の色*/
+  font-family: sans-serif;/*一般的な書体*/
+}
