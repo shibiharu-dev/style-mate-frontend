@@ -6,12 +6,11 @@ import ClothesList from './components/ClothesList.vue';
 //状態を記憶するためにrefという特別な関数を使う
 import { ref } from 'vue';
 
+// -------------------トップページ部分----------------------
+
 //選択中のIDを記憶する箱　初期値はnull
 const selectedTopsId = ref(null);
 const selectedBottomsId = ref(null);
-
-//服登録モーダルを表示するかどうかを記憶する箱
-const isModalOpen = ref(false); 
 
 //トップスがクリックされたときに動く関数
 const handleTopsSelect = (id) => {         //関数の宣言　idは引数
@@ -27,10 +26,10 @@ const handleBottomsSelect = (id) => {
   console.warn("選ばれたボトムスのID:", id);
 };
 
-//提案するボタンがクリックされたときに動く関数
-const makeProposal = () => {
-  alert(`ID:${selectedTopsId.value} と ID:${selectedBottomsId.value} でコーディネートしました！`);
-};
+// -------------------服登録モーダル部分----------------------
+
+//服登録モーダルを表示するかどうかを記憶する箱
+const isModalOpen = ref(false); 
 
 //ユーザーが入力したデータを一時的に保存しておく箱
 const newCloth = ref({
@@ -77,7 +76,109 @@ const registerCloth = async () => {
   }
 };
 
+// ----------------コーデ提案モーダル部分------------------
 
+// ユーザーが選んだ服のデータを受け取る箱（バックエンドができたら消す）
+const userSelectedCloth = ref(null);
+// 提案された服のデータを受け取る箱
+const suggestedCloth = ref(null); 
+// 結果モーダルの開閉フラグ
+const isSuggestModalOpen = ref(false); 
+// 通信中フラグ（ローディング用）
+const isSuggesting = ref(false); 
+
+
+// バックエンドがまだないので、一時的にランダムで提案する関数
+const makeProposal = () => {
+  // ちゃんと服が選ばれているかチェック
+  if (!selectedTopsId.value && !selectedBottomsId.value) {
+    alert("トップスかボトムス、どちらかを選んでください");
+    return;
+  }
+
+  // ユーザーが選んだ服のデータを特定して保存
+  if (selectedTopsId.value) {
+    // topsDataの中から、IDが一致するものを探す
+    // .find()で()内の条件にあうものを探すことができる
+    userSelectedCloth.value = topsData.find(t => t.id === selectedTopsId.value);
+  } else {
+    // bottomsDataの中から探す
+    userSelectedCloth.value = bottomsData.find(b => b.id === selectedBottomsId.value);
+  }
+
+  isSuggesting.value = true; // ローディング開始
+
+  // サーバーとの通信のふりをして、少し待ってから結果を出す
+  setTimeout(() => {
+    let targetList = [];
+    
+    // トップスを選んでいたら、ボトムスリストから選ぶ
+    if (selectedTopsId.value) {
+      targetList = bottomsData;
+    } else {
+      // ボトムスを選んでいたら、トップスリストから選ぶ
+      targetList = topsData;
+    }
+
+    // ランダムに1つ選ぶ
+    // Math.floor:小数点以下切り捨て
+    // Math.random():0~0.9999まででランダムに小数を選ぶ
+    const randomIndex = Math.floor(Math.random() * targetList.length);
+    const randomCloth = targetList[randomIndex];
+
+    suggestedCloth.value = randomCloth; // 結果を箱に入れる
+    isSuggestModalOpen.value = true;    // モーダルを開く
+    isSuggesting.value = false;         // 通信終了
+  }, 1000); // 1000ミリ秒 = 1秒待つ
+};
+
+// 本来のAPIを使う関数（バックエンドができたらこっちに戻す）
+/*
+const makeProposalApi = async () => {
+  // 1. ちゃんと服が選ばれているかチェック
+  if (!selectedTopsId.value && !selectedBottomsId.value) {
+    alert("トップスかボトムス、どちらかを選んでください");
+    return;
+  }
+
+  isSuggesting.value = true; // ローディング開始
+
+  // 2. 送るデータを作る (JSON)
+  // ”selectedTopsId.value ? 'Top' : 'Bottom'” ：selectedTopsId.valueが選ばれているなら Top、そうでなければ Bottom
+  const requestData = {
+    target_id: selectedTopsId.value || selectedBottomsId.value,
+    target_type: selectedTopsId.value ? 'Top' : 'Bottom' 
+  };
+
+  try {
+    // 3. サーバーに送信 (POST)
+    const response = await fetch('http://localhost:5000/api/suggest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', // JSONで送るよ！という合図
+      },
+      body: JSON.stringify(requestData) // オブジェクトを文字列に変換
+    });
+
+    // 4. 結果を受け取る
+    // 処理に時間がかかるのでawaitをつける
+    // .json() を使ってJavaScriptで扱えるデータに戻す
+    const data = await response.json();
+    
+    // 5. 結果を表示
+    suggestedCloth.value = data; // 結果を箱に入れる
+    isSuggestModalOpen.value = true; // モーダルを開く
+
+  } catch (error) {
+    console.error("提案エラー:", error);
+    alert("AIの提案に失敗しました...");
+  } finally {
+    isSuggesting.value = false; // 通信終了（成功しても失敗しても実行される）
+  }
+};
+*/
+
+// ----------------仮データ部分------------------
 
 //トップス用のデータ
 const topsData = [
@@ -177,6 +278,38 @@ const bottomsData = [
             <button @click="isModalOpen = false" class="cancel-btn">キャンセル</button>
           </div>
         </div> 
+      </div>
+
+      <!-- AIが提案した服を表示するモーダル -->
+      <div v-if="isSuggestModalOpen" class="modal-overlay">
+        <div class="modal-content suggest-modal">
+          <h3>AIのおすすめコーデ</h3>
+          
+          <!-- 結果表示部分 -->
+          <div class="result-area">
+            <!-- 自分が選んだ服 -->
+            <div class="cloth-card">
+              <p>あなたの選択</p>
+              <!-- 画像の代わりに色の箱を表示 -->
+              <!-- :styleでcolor-boxのcssの内容を変えられる-->
+              <!-- userSelectedCloth?.colorのように?.にすると、データがない時は何もしない（undefined）を渡してくれる-->
+              <div class="color-box" :style="{ backgroundColor: userSelectedCloth?.color }"></div>
+              <p>{{ userSelectedCloth?.name }}</p>
+            </div>
+            
+            <div class="plus-icon">＋</div>
+
+            <!-- AIが選んだ服 -->
+            <div class="cloth-card">
+              <p>AIの提案</p>
+              <!-- 画像の代わりに色の箱を表示 -->
+              <div class="color-box" :style="{ backgroundColor: suggestedCloth?.color }"></div>
+              <p>{{ suggestedCloth?.name }}</p>
+            </div>
+          </div>
+
+          <button class="close-btn" @click="isSuggestModalOpen = false">閉じる</button>
+        </div>
       </div>
 
     </main>
@@ -286,7 +419,7 @@ h3 {
   max-width: 400px; /*ただし、400pxまで*/
 }
 
-/* フォームのスタイル */
+/* 服登録モーダル*/
 .form-group {
   margin-bottom: 15px; /* 下の項目との間隔 */
   text-align: center;  /* 中身を中央揃え */
@@ -330,5 +463,39 @@ h3 {
   padding: 10px 20px;
   border-radius: 5px;
   cursor: pointer;
+}
+
+/* コーデ提案モーダル */
+.result-area {
+  display: flex;           /* 中身を横並びにする魔法 */
+  align-items: center;     /* 上下の真ん中に揃える */
+  justify-content: center; /* 左右の真ん中に揃える */
+  gap: 15px;               /* アイテム同士の隙間を15px空ける */
+  margin: 20px 0;          /* 外側の余白（上下に20px、左右は0） */
+}
+.cloth-card {
+  text-align: center;      /* 文字や中身を中央揃えにする */
+  width: 100px;            /* カードの幅を100pxに固定 */
+}
+.color-box {
+  width: 80px;             /* 箱の幅 */
+  height: 80px;            /* 箱の高さ */
+  border-radius: 8px;      /* 角を少し丸くする */
+  margin: 5px auto;        /* 上下に5pxの隙間、左右は自動で中央寄せ */
+  border: 1px solid #ddd;  /* 薄いグレーの枠線をつける */
+}
+.plus-icon {
+  font-size: 24px;         /* ＋マークの文字サイズ */
+  color: #888;             /* グレー色にする */
+}
+.close-btn{
+  background-color: #42b883; /* ボタンの背景色（緑） */
+  color: white;              /* 文字色を白に */
+  border: none;              /* 枠線を消す */
+  padding: 10px 20px;        /* 内側の余白（上下10px、左右20px） */
+  border-radius: 5px;        /* 角を丸くする */
+  cursor: pointer;           /* マウスを乗せたときに指マークにする */
+  display: block;   /* ブロック要素にして幅を確保 */
+  margin: 0 auto;   /* 左右の余白を自動にして中央寄せ */
 }
 </style>
