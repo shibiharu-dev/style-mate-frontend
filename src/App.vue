@@ -87,6 +87,95 @@ const registerCloth = async () => {
   }
 };
 
+// 服を削除する関数
+const deleteCloth = async (item) => {
+  if (!confirm('本当に削除しますか？')) return;
+
+  try {
+    // DELETEメソッドでサーバーに削除依頼
+    await fetch(`http://localhost:5000/api/clothes/${item.id}`, {
+      method: 'DELETE',
+    });
+    
+    // リストを更新
+    fetchClothes();
+    
+    // もし削除した服が選択されていたら、選択を解除する
+    if (selectedTopsId.value === item.id) selectedTopsId.value = null;
+    if (selectedBottomsId.value === item.id) selectedBottomsId.value = null;
+
+  } catch (error) {
+    console.error("削除エラー:", error);
+    alert("削除に失敗しました");
+  }
+};
+
+// -------------------服編集モーダル部分----------------------
+
+// 編集モーダルを表示するかどうか
+const isEditModalOpen = ref(false);
+// 更新処理中かどうか
+const isUpdating = ref(false);
+// 編集中のデータ
+const editingCloth = ref({
+  id: null,
+  genre: '',
+  color: '',
+  image: null,      // 新しく選択されたファイル
+  currentImage: ''  // 現在登録されている画像のパス
+});
+
+// 編集ボタンが押されたときの処理
+const openEditModal = (item) => {
+  editingCloth.value = {
+    id: item.id,
+    genre: item.genre,
+    color: item.color,
+    image: null, // ファイルはリセット
+    currentImage: item.image_path
+  };
+  isEditModalOpen.value = true;
+};
+
+// 編集用ファイル選択
+const handleEditFileChange = (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    editingCloth.value.image = file;
+  }
+};
+
+// 更新処理を実行する関数
+const updateCloth = async () => {
+  if (isUpdating.value) return;
+  isUpdating.value = true;
+
+  const formData = new FormData();
+  formData.append('genre', editingCloth.value.genre);
+  formData.append('color', editingCloth.value.color);
+  // 新しい画像が選ばれているときだけ画像を送る
+  if (editingCloth.value.image) {
+    formData.append('image', editingCloth.value.image);
+  }
+
+  try {
+    // PUTメソッドで更新
+    await fetch(`http://localhost:5000/api/clothes/${editingCloth.value.id}`, {
+      method: 'PUT',
+      body: formData,
+    });
+    
+    isEditModalOpen.value = false;
+    fetchClothes(); // リストを再取得
+
+  } catch (error) {
+    console.error("更新エラー:", error);
+    alert("更新に失敗しました");
+  } finally {
+    isUpdating.value = false;
+  }
+};
+
 // ----------------コーデ提案モーダル部分------------------
 
 // ユーザーが選んだ服のデータを受け取る箱（バックエンドができたら消す）
@@ -272,14 +361,14 @@ const getImageUrl = (path) => {
         <!-- :items="topsData" でデータを渡す！ -->
         <!-- :selected-id="selectedTopsId"で親が保存しているIDを渡す-->
         <!-- @select="handleTopsSelect" 選ばれたときにhandleTopsSelectを実行-->
-        <ClothesList :items="topsData" :selected-id="selectedTopsId" :is-edit-mode="isEditMode" @select="handleTopsSelect"/>
+        <ClothesList :items="topsData" :selected-id="selectedTopsId" :is-edit-mode="isEditMode" @select="handleTopsSelect" @delete="deleteCloth" @edit="openEditModal"/>
       </div>
 
       <!--ボトムスエリア-->
       <div class="clothing-section">
         <h2>ボトムス</h2>
         <!-- :items="bottomsData" でデータを渡す！ -->
-        <ClothesList :items="bottomsData" :selected-id="selectedBottomsId" :is-edit-mode="isEditMode" @select="handleBottomsSelect"/>
+        <ClothesList :items="bottomsData" :selected-id="selectedBottomsId" :is-edit-mode="isEditMode" @select="handleBottomsSelect" @delete="deleteCloth" @edit="openEditModal"/>
       </div>
       
       <!-- 提案ボタン-->
@@ -341,6 +430,45 @@ const getImageUrl = (path) => {
               {{ isRegistering ? '送信中...' : '登録' }}
             </button>
             <button @click="isModalOpen = false" class="cancel-btn" :disabled="isRegistering">キャンセル</button>
+          </div>
+        </div> 
+      </div>
+
+      <!-- 編集用モーダル -->
+      <div v-if="isEditModalOpen" class="modal-overlay"> 
+        <div class="modal-content">
+          <h3>服の情報を編集</h3>
+          
+          <!-- 画像変更 -->
+          <div class="form-group">
+            <label>画像 (変更する場合のみ)</label>
+            <!-- 現在の画像があればプレビュー表示 -->
+            <div v-if="editingCloth.currentImage && !editingCloth.image" style="margin-bottom:10px;">
+               <img :src="getImageUrl(editingCloth.currentImage)" alt="現在の画像" style="height: 100px; object-fit: contain;">
+            </div>
+            <input type="file" @change="handleEditFileChange" accept="image/*">
+          </div>
+
+          <!-- ジャンル選択 -->
+          <div class="form-group">
+            <label>ジャンル</label>
+            <select v-model="editingCloth.genre">
+              <option value="Top">トップス</option>
+              <option value="Bottom">ボトムス</option>
+            </select>
+          </div>
+          
+          <!-- 色選択 -->
+          <div class="form-group">
+            <label>色</label>
+            <input type="color" v-model="editingCloth.color" class="color-picker">
+          </div>
+          
+          <div class="modal-actions">
+            <button @click="updateCloth" class="register-btn" :disabled="isUpdating">
+              {{ isUpdating ? '更新中...' : '更新' }}
+            </button>
+            <button @click="isEditModalOpen = false" class="cancel-btn" :disabled="isUpdating">キャンセル</button>
           </div>
         </div> 
       </div>
