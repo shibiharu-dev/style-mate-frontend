@@ -3,14 +3,17 @@
 // 服を表示するコンポーネントをインポートする
 // ./は同じフォルダ内という意味
 import ClothesList from './components/ClothesList.vue';
-//状態を記憶するためにrefという特別な関数を使う
-import { ref } from 'vue';
+//状態を記憶するためにref,onMountedという特別な関数を使う
+import { ref,onMounted } from 'vue';
 
 // -------------------トップページ部分----------------------
 
 //選択中のIDを記憶する箱　初期値はnull
 const selectedTopsId = ref(null);
 const selectedBottomsId = ref(null);
+
+// 編集モードの状態（trueなら編集ボタン表示）
+const isEditMode = ref(false);
 
 //トップスがクリックされたときに動く関数
 const handleTopsSelect = (id) => {         //関数の宣言　idは引数
@@ -30,6 +33,8 @@ const handleBottomsSelect = (id) => {
 
 //服登録モーダルを表示するかどうかを記憶する箱
 const isModalOpen = ref(false); 
+// 登録処理中かどうか
+const isRegistering = ref(false);
 
 //ユーザーが入力したデータを一時的に保存しておく箱
 const newCloth = ref({
@@ -50,6 +55,9 @@ const handleFileChange = (event) => {
 };
 
 const registerCloth = async () => {
+  if (isRegistering.value) return; // 連打防止
+  isRegistering.value = true;      // 送信開始
+
   // 1. 送るデータを作る
   // 画像データを含むデータを送るときはFormData形式を使う
   const formData = new FormData();
@@ -68,11 +76,14 @@ const registerCloth = async () => {
     // 3. 成功したら...
     //モーダルを閉じて、服リストを更新する
     isModalOpen.value = false; 
-    // fetchClothes();            
-    alert("登録しました！");
+
+    //服を更新する
+    fetchClothes();            
 
   } catch (error) {
     console.error("登録エラー:", error);
+  } finally {
+    isRegistering.value = false; // 処理終了（成功しても失敗しても実行される）
   }
 };
 
@@ -89,6 +100,7 @@ const isSuggesting = ref(false);
 
 
 // バックエンドがまだないので、一時的にランダムで提案する関数
+/*
 const makeProposal = () => {
   // ちゃんと服が選ばれているかチェック
   if (!selectedTopsId.value && !selectedBottomsId.value) {
@@ -100,10 +112,10 @@ const makeProposal = () => {
   if (selectedTopsId.value) {
     // topsDataの中から、IDが一致するものを探す
     // .find()で()内の条件にあうものを探すことができる
-    userSelectedCloth.value = topsData.find(t => t.id === selectedTopsId.value);
+    userSelectedCloth.value = topsData.value.find(t => t.id === selectedTopsId.value);
   } else {
     // bottomsDataの中から探す
-    userSelectedCloth.value = bottomsData.find(b => b.id === selectedBottomsId.value);
+    userSelectedCloth.value = bottomsData.value.find(b => b.id === selectedBottomsId.value);
   }
 
   isSuggesting.value = true; // ローディング開始
@@ -114,10 +126,10 @@ const makeProposal = () => {
     
     // トップスを選んでいたら、ボトムスリストから選ぶ
     if (selectedTopsId.value) {
-      targetList = bottomsData;
+      targetList = bottomsData.value;
     } else {
       // ボトムスを選んでいたら、トップスリストから選ぶ
-      targetList = topsData;
+      targetList = topsData.value;
     }
 
     // ランダムに1つ選ぶ
@@ -131,33 +143,38 @@ const makeProposal = () => {
     isSuggesting.value = false;         // 通信終了
   }, 1000); // 1000ミリ秒 = 1秒待つ
 };
+*/
 
 // 本来のAPIを使う関数（バックエンドができたらこっちに戻す）
-/*
-const makeProposalApi = async () => {
+
+const makeProposal = async () => {
   // 1. ちゃんと服が選ばれているかチェック
   if (!selectedTopsId.value && !selectedBottomsId.value) {
     alert("トップスかボトムス、どちらかを選んでください");
     return;
   }
 
-  isSuggesting.value = true; // ローディング開始
+  // 選択された服のデータを取得
+  let selectedCloth = null;
+  if (selectedTopsId.value) {
+    selectedCloth = topsData.value.find(t => t.id === selectedTopsId.value);
+  } else {
+    selectedCloth = bottomsData.value.find(b => b.id === selectedBottomsId.value);
+  }
 
-  // 2. 送るデータを作る (JSON)
-  // ”selectedTopsId.value ? 'Top' : 'Bottom'” ：selectedTopsId.valueが選ばれているなら Top、そうでなければ Bottom
-  const requestData = {
-    target_id: selectedTopsId.value || selectedBottomsId.value,
-    target_type: selectedTopsId.value ? 'Top' : 'Bottom' 
-  };
+  // 画面表示用にセット
+  userSelectedCloth.value = selectedCloth;
+  isSuggesting.value = true; // ローディング開始
 
   try {
     // 3. サーバーに送信 (POST)
-    const response = await fetch('http://localhost:5000/api/suggest', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json', // JSONで送るよ！という合図
-      },
-      body: JSON.stringify(requestData) // オブジェクトを文字列に変換
+    // URLの末尾に選んだ服のIDをつける
+    
+    //    const response = await fetch(`http://localhost:5000/api/suggest/${selectedCloth.id}`, {
+    //  method: 'POST'
+
+    const response = await fetch(`http://localhost:5000/api/suggest/${selectedCloth.id}`, {
+      method: 'POST'
     });
 
     // 4. 結果を受け取る
@@ -166,7 +183,21 @@ const makeProposalApi = async () => {
     const data = await response.json();
     
     // 5. 結果を表示
-    suggestedCloth.value = data; // 結果を箱に入れる
+    // レスポンスには提案された服のデータが入っている
+    // 手持ちのリストから探して、名前などの情報を補完する
+    const allClothes = [...topsData.value, ...bottomsData.value];
+    const bestMatch = allClothes.find(item => item.id === data.id);
+
+    if (bestMatch) {
+      suggestedCloth.value = bestMatch;
+    } else {
+      // リストに見つからない場合は、レスポンスのデータをそのまま使う
+      suggestedCloth.value = {
+        ...data,
+        name: 'AIのおすすめ'
+      };
+    }
+
     isSuggestModalOpen.value = true; // モーダルを開く
 
   } catch (error) {
@@ -176,26 +207,52 @@ const makeProposalApi = async () => {
     isSuggesting.value = false; // 通信終了（成功しても失敗しても実行される）
   }
 };
-*/
 
-// ----------------仮データ部分------------------
 
-//トップス用のデータ
-const topsData = [
-  { id: 1, name: "白シャツ", color: "#ffffff"},
-  { id: 2, name: "黒パーカー", color: "#333333"},
-  { id: 3, name: "青シャツ", color: "#aaccff"},
-  { id: 4, name: "赤ニット", color: "#ffcccc"},
-];
 
-//ボトムス用のデータ
-const bottomsData = [
-  { id: 1, name: "デニム", color: "#336699"},
-  { id: 2, name: "カーゴパンツ", color: "#ddccaa"},
-  { id: 3, name: "スカート", color: "ffaaaa"},
-  { id: 4, name: "スカート", color: "ffaaaa"},
-  { id: 5, name: "スカート", color: "ffaaaa"},
-];
+//-----------------データ受け取り-----------------
+
+// 非同期関数 (async) として定義
+const fetchClothes = async () => {
+  try {
+    // 1. サーバーに「データちょうだい」と言う
+    const response = await fetch('http://localhost:5000/api/clothes');
+    
+    // 2. 返ってきたデータをJSONとして読み込む
+    const data = await response.json();
+    
+    // 3. データをトップスとボトムスに振り分ける
+    // (サーバーからは全データのリストが返ってくる想定)
+    topsData.value = data.filter(item => item.genre === 'Top');
+    bottomsData.value = data.filter(item => item.genre === 'Bottom');
+  } catch (error) {
+    console.error("データの取得に失敗しました:", error);
+  }
+};
+
+// ----------------データ部分------------------
+
+const topsData = ref([]);
+const bottomsData = ref([]);
+
+
+onMounted(() => {
+  fetchClothes();
+});
+
+// 画像のURLを取得する関数
+const getImageUrl = (path) => {
+  if (!path) return '';
+  // Windowsパスの修正
+  let cleanPath = path.replace(/\\/g, '/');
+  // すでにhttpならそのまま
+  if (cleanPath.startsWith('http')) return cleanPath;
+
+  const baseUrl = 'http://localhost:5000';
+  // パスの先頭に / がなければつける
+  return `${baseUrl}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
+};
+
 </script>
 
 <template>
@@ -215,14 +272,14 @@ const bottomsData = [
         <!-- :items="topsData" でデータを渡す！ -->
         <!-- :selected-id="selectedTopsId"で親が保存しているIDを渡す-->
         <!-- @select="handleTopsSelect" 選ばれたときにhandleTopsSelectを実行-->
-        <ClothesList :items="topsData" :selected-id="selectedTopsId" @select="handleTopsSelect"/>
+        <ClothesList :items="topsData" :selected-id="selectedTopsId" :is-edit-mode="isEditMode" @select="handleTopsSelect"/>
       </div>
 
       <!--ボトムスエリア-->
       <div class="clothing-section">
         <h2>ボトムス</h2>
         <!-- :items="bottomsData" でデータを渡す！ -->
-        <ClothesList :items="bottomsData" :selected-id="selectedBottomsId" @select="handleBottomsSelect"/>
+        <ClothesList :items="bottomsData" :selected-id="selectedBottomsId" :is-edit-mode="isEditMode" @select="handleBottomsSelect"/>
       </div>
       
       <!-- 提案ボタン-->
@@ -232,6 +289,12 @@ const bottomsData = [
         </button>
       </div>
       
+      <!-- 編集モード切り替えボタン（左下） -->
+      <button class="fab-btn edit-mode-toggle" @click="isEditMode = !isEditMode" :class="{ active: isEditMode }">
+        <!-- 鉛筆アイコン -->
+        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="white"><path d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 17l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm635-577-57-57 57 57Zm-58 59L258-120H120v-138l427-427 138 138Z"/></svg>
+      </button>
+
       <!-- 登録ボタン -->
       <!-- クリックするとisModalOpenがtrueになる -->
       <button class="fab-btn" @click="isModalOpen = true">＋</button> 
@@ -274,8 +337,10 @@ const bottomsData = [
           <!-- 登録をおすと、registerCloth 関数が動き、サーバーへの送信処理などが始まる-->
           <!-- キャンセルを押すと、isModalOpen を false に戻す。v-if の条件が外れるため、モーダルが消えます。-->
           <div class="modal-actions">
-            <button @click="registerCloth" class="register-btn">登録</button>
-            <button @click="isModalOpen = false" class="cancel-btn">キャンセル</button>
+            <button @click="registerCloth" class="register-btn" :disabled="isRegistering">
+              {{ isRegistering ? '送信中...' : '登録' }}
+            </button>
+            <button @click="isModalOpen = false" class="cancel-btn" :disabled="isRegistering">キャンセル</button>
           </div>
         </div> 
       </div>
@@ -293,7 +358,9 @@ const bottomsData = [
               <!-- 画像の代わりに色の箱を表示 -->
               <!-- :styleでcolor-boxのcssの内容を変えられる-->
               <!-- userSelectedCloth?.colorのように?.にすると、データがない時は何もしない（undefined）を渡してくれる-->
-              <div class="color-box" :style="{ backgroundColor: userSelectedCloth?.color }"></div>
+              <!-- ngrokを使わない時ははgetImageUrlはいらない -->
+              <img v-if="userSelectedCloth?.image_path" :src="getImageUrl(userSelectedCloth.image_path)" class="result-img" alt="選択した服">
+              <div v-else class="color-box" :style="{ backgroundColor: userSelectedCloth?.color }"></div>
               <p>{{ userSelectedCloth?.name }}</p>
             </div>
             
@@ -303,7 +370,9 @@ const bottomsData = [
             <div class="cloth-card">
               <p>AIの提案</p>
               <!-- 画像の代わりに色の箱を表示 -->
-              <div class="color-box" :style="{ backgroundColor: suggestedCloth?.color }"></div>
+              <!-- ngrokを使わない時ははgetImageUrlはいらない -->
+              <img v-if="suggestedCloth?.image_path" :src="getImageUrl(suggestedCloth.image_path)" class="result-img" alt="提案された服">
+              <div v-else class="color-box" :style="{ backgroundColor: suggestedCloth?.color }"></div>
               <p>{{ suggestedCloth?.name }}</p>
             </div>
           </div>
@@ -396,6 +465,19 @@ h3 {
   z-index: 100; /*他のものと重なっても隠れないように*/
 }
 
+/* 編集モードボタン（左下） */
+.edit-mode-toggle {
+  right: auto; /* 右寄せを解除 */
+  left: 20px;  /* 左に配置 */
+  background-color: #888; /* 通常時はグレー */
+}
+
+/* 編集モードONのとき */
+.edit-mode-toggle.active {
+  background-color: #f0ad4e; /* ONのときはオレンジ */
+  transform: scale(1.1);     /* 少し大きくする */
+}
+
 /* モーダルの背景 */
 .modal-overlay {
   position: fixed;
@@ -456,6 +538,10 @@ h3 {
   cursor: pointer;
   font-weight: bold;
 }
+.register-btn:disabled {
+  background-color: #ccc; /* 無効時はグレーにする */
+  cursor: not-allowed;    /* マウスカーソルを禁止マークに */
+}
 .cancel-btn {
   background-color: #888585; 
   color: white;
@@ -483,6 +569,13 @@ h3 {
   border-radius: 8px;      /* 角を少し丸くする */
   margin: 5px auto;        /* 上下に5pxの隙間、左右は自動で中央寄せ */
   border: 1px solid #ddd;  /* 薄いグレーの枠線をつける */
+}
+.result-img {
+  width: 80px;
+  height: 110px;
+  border-radius: 8px;
+  object-fit: cover;
+  margin: 5px auto;
 }
 .plus-icon {
   font-size: 24px;         /* ＋マークの文字サイズ */
